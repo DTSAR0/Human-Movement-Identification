@@ -51,15 +51,24 @@ pip install -r requirements.txt
 
 ```
 Human-Movement-Identification/
-├── Human_movement_identification.py  # Random Forest classifier
-├── mlp_har_classifier.py            # Standalone MLP classifier
-├── compare_rf_mlp.py                # Comparison script (RF vs MLP)
-├── requirements.txt                 # Python dependencies
-├── README.md                        # This file
-├── SETUP_TENSORFLOW.md              # TensorFlow setup guide
+├── 01_train_random_forest.py   # Random Forest classifier (standalone)
+├── 02_train_mlp.py             # MLP/Neural Network classifier (standalone)
+├── 03_compare_models.py        # Comparison script (RF vs MLP)
+├── requirements.txt             # Python dependencies
+├── README.md                    # This file
+├── SETUP_TENSORFLOW.md          # TensorFlow setup guide
+├── DATASET_STRUCTURE.md         # Dataset structure documentation
 └── human+activity+recognition+using+smartphones/
-    └── UCI HAR Dataset/             # Dataset directory
+    └── UCI HAR Dataset/         # Dataset directory
 ```
+
+### File Descriptions
+
+- **`01_train_random_forest.py`**: Trains and evaluates a Random Forest classifier on the UCI HAR dataset. Contains only Random Forest implementation (no MLP code). Combines original train/test data and splits into 70% train / 30% test.
+
+- **`02_train_mlp.py`**: Trains and evaluates an MLP (Multi-Layer Perceptron) neural network classifier on the UCI HAR dataset. Contains only MLP implementation. Uses 70% train / 30% test split, with additional 80/20 validation split from training data.
+
+- **`03_compare_models.py`**: Compares Random Forest and MLP models side-by-side using the same 70/30 data split for fair comparison. Generates comprehensive metrics comparison and visualizations.
 
 ## 🎯 Usage
 
@@ -68,24 +77,16 @@ Human-Movement-Identification/
 Train and validate a Random Forest classifier:
 
 ```bash
-python Human_movement_identification.py
-```
-
-Or with explicit argument:
-
-```bash
-python Human_movement_identification.py random_forest
+python 01_train_random_forest.py
 ```
 
 Or in Python code:
 
 ```python
-from Human_movement_identification import main_random_forest
+from 01_train_random_forest import main_random_forest
 
 model, metrics = main_random_forest()
 ```
-
-**Note**: `Human_movement_identification.py` contains **only** Random Forest implementation. MLP and comparison functionality are in separate files.
 
 **Random Forest Configuration:**
 - Number of trees: **100** (decision trees)
@@ -97,13 +98,13 @@ model, metrics = main_random_forest()
 Train and validate an MLP neural network:
 
 ```bash
-python mlp_har_classifier.py
+python 02_train_mlp.py
 ```
 
 Or in Python code:
 
 ```python
-from mlp_har_classifier import main
+from 02_train_mlp import main
 
 main()
 ```
@@ -123,7 +124,7 @@ main()
 Compare Random Forest and MLP models side-by-side:
 
 ```bash
-python compare_rf_mlp.py
+python 03_compare_models.py
 ```
 
 This script:
@@ -215,7 +216,7 @@ model = train_random_forest(
 ```
 
 ### MLP Parameters
-Can be adjusted in `mlp_har_classifier.py`:
+Can be adjusted in `02_train_mlp.py`:
 ```python
 LEARNING_RATE = 1e-3
 EPOCHS = 100
@@ -227,9 +228,10 @@ DROPOUT_RATE = 0.3
 ## 📝 Notes
 
 - **Reproducibility**: All scripts use `random_state=42` for consistent results
-- **Data Split**: Comparison script uses identical 70/30 train/test split for fair comparison
+- **Data Split**: All scripts combine original train/test and split into 70/30 for training/testing
 - **Preprocessing**: Only MLP uses feature scaling (StandardScaler); Random Forest works on raw features
 - **Model Saving**: Trained models are saved as `.pkl` (Random Forest) and `.h5` (MLP) files
+- **File Organization**: Each classifier is in a separate file for clarity and modularity
 
 ## 🤝 Contributing
 
