@@ -621,34 +621,25 @@ def main():
     print("="*80)
     X_train_orig, y_train_orig, X_test_orig, y_test_orig, activity_names = load_har_dataset(dataset_path)
     
-    # Combine train and test
+    # Use original train/test split (NO COMBINING - preserves subject separation)
     print("\n" + "="*80)
-    print("COMBINING DATA")
+    print("USING ORIGINAL DATASET SPLIT (NO COMBINING)")
     print("="*80)
-    X_all = np.vstack([X_train_orig, X_test_orig])
-    y_all = np.hstack([y_train_orig, y_test_orig])
-    print(f"Total samples: {X_all.shape[0]}")
-    print(f"Features: {X_all.shape[1]}")
-    
-    # Single split for both models: 70% train / 30% test
-    print("\n" + "="*80)
-    print("SPLITTING DATA: 70% train / 30% test (SAME FOR BOTH MODELS)")
-    print("="*80)
-    X_train, X_test, y_train, y_test = train_test_split(
-        X_all, y_all,
-        test_size=0.3,
-        random_state=42,
-        stratify=y_all
-    )
-    print(f"Train: {X_train.shape[0]} samples ({X_train.shape[0]/X_all.shape[0]*100:.1f}%)")  # type: ignore
-    print(f"Test:  {X_test.shape[0]} samples ({X_test.shape[0]/X_all.shape[0]*100:.1f}%)")  # type: ignore
+    print("Train: Original UCI HAR train set")
+    print("Test:  Original UCI HAR test set")
+    print(f"Train: {X_train_orig.shape[0]} samples")  # type: ignore
+    print(f"Test:  {X_test_orig.shape[0]} samples")  # type: ignore
+    print("Note: Both RF and MLP use the SAME original train/test split")
     
     # ========== RANDOM FOREST ==========
-    # Train on unscaled data
-    rf_model = train_rf(X_train, y_train)
+    # Train on original train set, test on original test set
+    print("\n" + "="*80)
+    print("TRAINING RANDOM FOREST")
+    print("="*80)
+    rf_model = train_rf(X_train_orig, y_train_orig)
     
-    # Evaluate
-    rf_metrics = evaluate_sklearn_model(rf_model, X_train, y_train, X_test, y_test, activity_names)
+    # Evaluate on original test set
+    rf_metrics = evaluate_sklearn_model(rf_model, X_train_orig, y_train_orig, X_test_orig, y_test_orig, activity_names)
     
     # ========== MLP ==========
     if not TENSORFLOW_AVAILABLE:
@@ -660,26 +651,26 @@ def main():
     print("PREPROCESSING FOR MLP")
     print("="*80)
     scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
+    X_train_scaled = scaler.fit_transform(X_train_orig)
+    X_test_scaled = scaler.transform(X_test_orig)
     print("Features scaled using StandardScaler (fit on train, transform on test)")
     
-    # Validation split for MLP: 80% train / 20% val
+    # Validation split for MLP: 80% train / 20% val (from original train set)
     X_train_final, X_val, y_train_final, y_val = train_test_split(
-        X_train_scaled, y_train,
+        X_train_scaled, y_train_orig,
         test_size=0.2,
         random_state=42,
-        stratify=y_train
+        stratify=y_train_orig
     )
-    print(f"MLP Train: {X_train_final.shape[0]} samples")  # type: ignore
-    print(f"MLP Val:   {X_val.shape[0]} samples")  # type: ignore
-    print(f"MLP Test:  {X_test_scaled.shape[0]} samples (same as RF)")  # type: ignore
+    print(f"MLP Train: {X_train_final.shape[0]} samples (80% of original train)")  # type: ignore
+    print(f"MLP Val:   {X_val.shape[0]} samples (20% of original train)")  # type: ignore
+    print(f"MLP Test:  {X_test_scaled.shape[0]} samples (original test, same as RF)")  # type: ignore
     
     # One-hot encode labels
-    num_classes = int(np.max(y_all)) + 1
+    num_classes = int(np.max(np.concatenate([y_train_orig, y_test_orig]))) + 1
     y_train_final_cat = to_categorical(y_train_final, num_classes=num_classes)
     y_val_cat = to_categorical(y_val, num_classes=num_classes)
-    y_test_cat = to_categorical(y_test, num_classes=num_classes)
+    y_test_cat = to_categorical(y_test_orig, num_classes=num_classes)
     
     # Train MLP
     mlp_model, mlp_history = train_mlp(
@@ -694,8 +685,8 @@ def main():
     
     # Evaluate MLP (use full train set for train accuracy)
     # Re-scale full train set for evaluation
-    X_train_full_scaled = scaler.transform(X_train)
-    y_train_full_cat = to_categorical(y_train, num_classes=num_classes)
+    X_train_full_scaled = scaler.transform(X_train_orig)
+    y_train_full_cat = to_categorical(y_train_orig, num_classes=num_classes)
     
     mlp_metrics = evaluate_keras_model(
         mlp_model,
