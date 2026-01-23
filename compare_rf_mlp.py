@@ -19,16 +19,30 @@ from sklearn.metrics import (
     classification_report
 )
 
-# TensorFlow/Keras imports (only when needed)
-try:
+# TensorFlow/Keras will be imported lazily (only when needed)
+TENSORFLOW_AVAILABLE = None  # Will be set on first check
+
+def _check_tensorflow():
+    """Lazy import check for TensorFlow"""
+    global TENSORFLOW_AVAILABLE
+    if TENSORFLOW_AVAILABLE is None:
+        try:
+            import tensorflow as tf  # type: ignore
+            TENSORFLOW_AVAILABLE = True
+        except ImportError:
+            TENSORFLOW_AVAILABLE = False
+            print("Warning: TensorFlow is not installed. MLP training will be skipped.")
+    return TENSORFLOW_AVAILABLE
+
+def _import_tensorflow():
+    """Lazy import of TensorFlow modules"""
+    if not _check_tensorflow():
+        raise ImportError("TensorFlow is not installed!")
     import tensorflow as tf  # type: ignore
     from tensorflow import keras  # type: ignore
     from tensorflow.keras import layers  # type: ignore
     from tensorflow.keras.utils import to_categorical  # type: ignore
-    TENSORFLOW_AVAILABLE = True
-except ImportError:
-    TENSORFLOW_AVAILABLE = False
-    print("Warning: TensorFlow is not installed. MLP training will be skipped.")
+    return tf, keras, layers, to_categorical
 
 # Seaborn for better plots (optional)
 try:
@@ -47,11 +61,8 @@ def set_seeds(seed: int = 42) -> None:
     import random
     random.seed(seed)
     np.random.seed(seed)
-    if TENSORFLOW_AVAILABLE:
-        try:
-            tf.keras.utils.set_random_seed(seed)  # type: ignore
-        except Exception:
-            pass
+    import tensorflow as tf  # type: ignore
+    tf.random.set_seed(seed)  # type: ignore
 
 
 # ============================================================================
@@ -163,8 +174,7 @@ def train_mlp(X_train, y_train, X_val, y_val, epochs=100, batch_size=32,
     Returns:
         trained model, training history
     """
-    if not TENSORFLOW_AVAILABLE:
-        raise ImportError("TensorFlow is not installed!")
+    tf, keras, layers, _ = _import_tensorflow()
     
     print("\n" + "="*60)
     print("TRAINING MLP")
@@ -278,8 +288,8 @@ def evaluate_sklearn_model(model, X_train, y_train, X_test, y_test, activity_nam
     # Confusion matrix
     cm = confusion_matrix(y_test, y_test_pred)
     
-    # Per-class accuracy
-    num_classes = int(np.max(y_test)) + 1
+    # Per-class accuracy (use train to determine number of classes)
+    num_classes = int(np.max(y_train)) + 1
     accuracy_per_class = []
     for i in range(num_classes):
         mask = y_test == i
@@ -365,8 +375,8 @@ def evaluate_keras_model(model, X_train, y_train, X_test, y_test, activity_names
     # Confusion matrix
     cm = confusion_matrix(y_test_labels, y_test_pred)
     
-    # Per-class accuracy
-    num_classes = int(np.max(y_test_labels)) + 1
+    # Per-class accuracy (use train to determine number of classes)
+    num_classes = int(np.max(y_train_labels)) + 1
     accuracy_per_class = []
     for i in range(num_classes):
         mask = y_test_labels == i
@@ -621,56 +631,71 @@ def main():
     print("="*80)
     X_train_orig, y_train_orig, X_test_orig, y_test_orig, activity_names = load_har_dataset(dataset_path)
     
-    # Use original train/test split (NO COMBINING - preserves subject separation)
+    # Combine train and test, then split 70% train / 30% test
     print("\n" + "="*80)
-    print("USING ORIGINAL DATASET SPLIT (NO COMBINING)")
+    print("COMBINING DATA AND SPLITTING: 70% train / 30% test")
     print("="*80)
-    print("Train: Original UCI HAR train set")
-    print("Test:  Original UCI HAR test set")
-    print(f"Train: {X_train_orig.shape[0]} samples")  # type: ignore
-    print(f"Test:  {X_test_orig.shape[0]} samples")  # type: ignore
-    print("Note: Both RF and MLP use the SAME original train/test split")
+    X_all = np.vstack([X_train_orig, X_test_orig])
+    y_all = np.hstack([y_train_orig, y_test_orig])
+    print(f"Total samples: {X_all.shape[0]}")
+    print(f"Features: {X_all.shape[1]}")
+    
+    # Single split for both models: 70% train / 30% test
+    # IMPORTANT: Test set (30%) is NEVER used for training
+    X_train, X_test, y_train, y_test = train_test_split(
+        X_all, y_all,
+        test_size=0.3,
+        random_state=42,
+        stratify=y_all
+    )
+    print(f"Train: {X_train.shape[0]} samples (70%) - FOR TRAINING ONLY")  # type: ignore
+    print(f"Test:  {X_test.shape[0]} samples (30%) - FOR TESTING ONLY, NEVER FOR TRAINING")  # type: ignore
+    print("Note: Both RF and MLP use the SAME 70/30 split")
     
     # ========== RANDOM FOREST ==========
-    # Train on original train set, test on original test set
+    # Train on 70% train set, test on 30% test set
     print("\n" + "="*80)
     print("TRAINING RANDOM FOREST")
     print("="*80)
-    rf_model = train_rf(X_train_orig, y_train_orig)
+    rf_model = train_rf(X_train, y_train)
     
-    # Evaluate on original test set
-    rf_metrics = evaluate_sklearn_model(rf_model, X_train_orig, y_train_orig, X_test_orig, y_test_orig, activity_names)
+    # Evaluate on 30% test set
+    rf_metrics = evaluate_sklearn_model(rf_model, X_train, y_train, X_test, y_test, activity_names)
     
     # ========== MLP ==========
-    if not TENSORFLOW_AVAILABLE:
+    if not _check_tensorflow():
         print("\n⚠️  TensorFlow not available. Skipping MLP training.")
         return
     
-    # Scale features for MLP (fit only on train!)
+    # Import TensorFlow modules (lazy import - only when needed)
+    _, _, _, to_categorical = _import_tensorflow()
+    
+    # Scale features for MLP (fit only on 70% train!)
     print("\n" + "="*80)
     print("PREPROCESSING FOR MLP")
     print("="*80)
     scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train_orig)
-    X_test_scaled = scaler.transform(X_test_orig)
-    print("Features scaled using StandardScaler (fit on train, transform on test)")
+    X_train_scaled = scaler.fit_transform(X_train)  # Fit on 70% train
+    X_test_scaled = scaler.transform(X_test)  # Transform 30% test
+    print("Features scaled using StandardScaler (fit on 70% train, transform on 30% test)")
     
-    # Validation split for MLP: 80% train / 20% val (from original train set)
+    # Validation split for MLP: 80% train / 20% val (from 70% train set)
+    # This gives: 56% train + 14% val = 70% total, 30% test (unused for training)
     X_train_final, X_val, y_train_final, y_val = train_test_split(
-        X_train_scaled, y_train_orig,
+        X_train_scaled, y_train,
         test_size=0.2,
         random_state=42,
-        stratify=y_train_orig
+        stratify=y_train
     )
-    print(f"MLP Train: {X_train_final.shape[0]} samples (80% of original train)")  # type: ignore
-    print(f"MLP Val:   {X_val.shape[0]} samples (20% of original train)")  # type: ignore
-    print(f"MLP Test:  {X_test_scaled.shape[0]} samples (original test, same as RF)")  # type: ignore
+    print(f"MLP Train: {X_train_final.shape[0]} samples (56% of total, from 70% train set)")  # type: ignore
+    print(f"MLP Val:   {X_val.shape[0]} samples (14% of total, from 70% train set)")  # type: ignore
+    print(f"MLP Test:  {X_test_scaled.shape[0]} samples (30% of total, NEVER USED FOR TRAINING)")  # type: ignore
     
-    # One-hot encode labels
-    num_classes = int(np.max(np.concatenate([y_train_orig, y_test_orig]))) + 1
+    # One-hot encode labels (use train to determine number of classes)
+    num_classes = int(np.max(y_train)) + 1
     y_train_final_cat = to_categorical(y_train_final, num_classes=num_classes)
     y_val_cat = to_categorical(y_val, num_classes=num_classes)
-    y_test_cat = to_categorical(y_test_orig, num_classes=num_classes)
+    y_test_cat = to_categorical(y_test, num_classes=num_classes)
     
     # Train MLP
     mlp_model, mlp_history = train_mlp(
@@ -683,14 +708,10 @@ def main():
         verbose=1
     )
     
-    # Evaluate MLP (use full train set for train accuracy)
-    # Re-scale full train set for evaluation
-    X_train_full_scaled = scaler.transform(X_train_orig)
-    y_train_full_cat = to_categorical(y_train_orig, num_classes=num_classes)
-    
+    # Evaluate MLP (use X_train_final for train accuracy - the actual training set)
     mlp_metrics = evaluate_keras_model(
         mlp_model,
-        X_train_full_scaled, y_train_full_cat,
+        X_train_final, y_train_final_cat,
         X_test_scaled, y_test_cat,
         activity_names
     )

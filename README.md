@@ -68,6 +68,12 @@ Human-Movement-Identification/
 Train and validate a Random Forest classifier:
 
 ```bash
+python Human_movement_identification.py
+```
+
+Or with explicit argument:
+
+```bash
 python Human_movement_identification.py random_forest
 ```
 
@@ -78,6 +84,8 @@ from Human_movement_identification import main_random_forest
 
 model, metrics = main_random_forest()
 ```
+
+**Note**: `Human_movement_identification.py` contains **only** Random Forest implementation. MLP and comparison functionality are in separate files.
 
 **Random Forest Configuration:**
 - Number of trees: **100** (decision trees)
@@ -195,9 +203,9 @@ See `requirements.txt` for complete list.
 ## 🔧 Configuration
 
 ### Random Forest Parameters
-Can be adjusted in `train_rf()` function:
+Can be adjusted in `train_random_forest()` function or `main_random_forest()`:
 ```python
-rf_model = train_rf(
+model = train_random_forest(
     X_train, y_train,
     n_estimators=100,    # Number of trees
     max_depth=None,      # Tree depth limit

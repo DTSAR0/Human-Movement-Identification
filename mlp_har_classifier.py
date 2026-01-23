@@ -418,42 +418,53 @@ def main():
     
     X_train_orig, y_train_orig, X_test_orig, y_test_orig, activity_names = load_har_dataset(dataset_path)
     
-    # Використовуємо оригінальний train/test split (БЕЗ об'єднання - зберігаємо розділення людей)
+    # Об'єднання train+test та розділення на 70% train / 30% test
     print(f"\n{'='*60}")
-    print("USING ORIGINAL DATASET SPLIT (NO COMBINING)")
+    print("COMBINING DATA AND SPLITTING: 70% train / 30% test")
     print(f"{'='*60}")
-    print("Train: Original UCI HAR train set")
-    print("Test:  Original UCI HAR test set")
-    print(f"Train: {X_train_orig.shape[0]} samples")  # type: ignore
-    print(f"Test:  {X_test_orig.shape[0]} samples")  # type: ignore
-    print("Note: Preserves original subject separation")
+    X_all = np.vstack([X_train_orig, X_test_orig])
+    y_all = np.hstack([y_train_orig, y_test_orig])
+    print(f"Total samples: {X_all.shape[0]}")
+    print(f"Features: {X_all.shape[1]}")
     
-    # Нормалізація з StandardScaler (fit тільки на train!)
+    # Split 70% train / 30% test
+    # ВАЖЛИВО: Test set (30%) НІКОЛИ не використовується для тренування
+    X_train, X_test, y_train, y_test = train_test_split(
+        X_all, y_all,
+        test_size=0.3,
+        random_state=42,
+        stratify=y_all
+    )
+    print(f"Train: {X_train.shape[0]} samples (70%) - ДЛЯ ТРЕНУВАННЯ")  # type: ignore
+    print(f"Test:  {X_test.shape[0]} samples (30%) - ДЛЯ ТЕСТУВАННЯ, НІКОЛИ ДЛЯ ТРЕНУВАННЯ")  # type: ignore
+    
+    # Нормалізація з StandardScaler (fit тільки на 70% train!)
     print(f"\n{'='*60}")
     print("NORMALIZING FEATURES")
     print(f"{'='*60}")
     scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train_orig)
-    X_test_scaled = scaler.transform(X_test_orig)
-    print("✅ Features normalized (fit on train, transform on test)")
+    X_train_scaled = scaler.fit_transform(X_train)  # Fit на 70% train
+    X_test_scaled = scaler.transform(X_test)  # Transform 30% test
+    print("✅ Features normalized (fit on 70% train, transform on 30% test)")
     
-    # Validation split: 80% train / 20% val (з оригінального train set для early stopping MLP)
+    # Validation split: 80% train / 20% val (з 70% train set для early stopping MLP)
+    # Це дає: 56% train + 14% val = 70% всього, 30% test (не використовується для тренування)
     print(f"\n{'='*60}")
-    print("VALIDATION SPLIT: 80% train / 20% val (from original train set)")
+    print("VALIDATION SPLIT: 80% train / 20% val (from 70% train set)")
     print(f"{'='*60}")
-    print("Note: MLP splits original train into 80% train + 20% val for early stopping")
+    print("Note: MLP splits 70% train into 56% train + 14% val for early stopping")
     X_train_final, X_val, y_train_final, y_val = train_test_split(
-        X_train_scaled, y_train_orig,
+        X_train_scaled, y_train,
         test_size=0.2,
         random_state=42,  # Однаковий seed для відтворюваності
-        stratify=y_train_orig
+        stratify=y_train
     )
-    print(f"Train (for MLP): {X_train_final.shape[0]} samples (80% of original train)")  # type: ignore
-    print(f"Val (for MLP):   {X_val.shape[0]} samples (20% of original train)")  # type: ignore
-    print(f"Test:            {X_test_scaled.shape[0]} samples (original test)")  # type: ignore
+    print(f"Train (for MLP): {X_train_final.shape[0]} samples (56% of total)")  # type: ignore
+    print(f"Val (for MLP):   {X_val.shape[0]} samples (14% of total)")  # type: ignore
+    print(f"Test:            {X_test_scaled.shape[0]} samples (30% of total, НІКОЛИ ДЛЯ ТРЕНУВАННЯ)")  # type: ignore
     
-    # Конвертація міток в one-hot encoding
-    num_classes = int(np.max(np.concatenate([y_train_orig, y_test_orig]))) + 1
+    # Конвертація міток в one-hot encoding (використовуємо train для визначення кількості класів)
+    num_classes = int(np.max(y_train)) + 1
     y_train_final_cat = to_categorical(y_train_final, num_classes=num_classes)
     y_val_cat = to_categorical(y_val, num_classes=num_classes)
     y_test_cat = to_categorical(y_test_orig, num_classes=num_classes)
